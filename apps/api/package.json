@@ -9,7 +9,8 @@
     "test:assist": "tsx src/modules/assignmentAssist/scoring.test.ts && tsx src/modules/assignmentAssist/validation.test.ts",
     "test:dispatch": "tsx src/modules/dispatch/queue-view.test.ts",
     "test:today": "tsx src/modules/today/scope.test.ts && tsx src/modules/today/warnings.test.ts",
-    "test:teams": "tsx src/modules/teams/assign.test.ts"
+    "test:teams": "tsx src/modules/teams/assign.test.ts",
+    "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
     "@truckerio/db": "workspace:*",
