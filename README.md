@@ -17,7 +17,7 @@ Out of scope:
 pnpm install
 cp .env.example .env
 
-docker-compose up -d
+# Start your Postgres/Redis services (local or managed)
 pnpm db:migrate
 pnpm db:seed
 ```
@@ -29,6 +29,25 @@ pnpm dev:web   # Next.js on http://localhost:3000
 pnpm dev:api   # Express API on http://localhost:4000
 pnpm dev:worker # Task automation worker
 ```
+
+
+## Backend production run (no Docker)
+
+```bash
+pnpm --filter @truckerio/api build
+pnpm --filter @truckerio/api start
+```
+
+The API reads `PORT` (default `3000`) and exposes a health endpoint at `/health`.
+
+Required backend env vars:
+- `DATABASE_URL`
+- `WEB_ORIGIN`
+
+Recommended for production:
+- `NODE_ENV=production`
+- `SESSION_SECRET`, `CSRF_SECRET`
+- `CORS_ALLOWED_ORIGINS`, `REQUEST_LOGGING_ENABLED`, `ERROR_INCLUDE_DETAILS`
 
 ## Reset for a new company
 
@@ -47,7 +66,7 @@ Optional overrides:
 
 ## Docker demo (one-command)
 
-1. Copy `.env.docker.example` to `.env.docker`. In LAN/dev you can leave `WEB_ORIGIN` blank and keep `NEXT_PUBLIC_API_BASE=/api`.
+1. Copy `.env.docker.example` to `.env.docker`. In LAN/dev you can leave `WEB_ORIGIN` blank and keep `NEXT_PUBLIC_API_URL=http://localhost:4000`.
 2. Run:
    ```bash
    docker compose -f docker-compose.demo.yml up -d --build
@@ -56,28 +75,6 @@ Optional overrides:
    ```bash
    docker compose -f docker-compose.demo.yml exec api pnpm db:seed
    ```
-
-## Render (Docker)
-
-Use repo root as the build context for all services.
-
-Web (Next.js):
-- Build context: `.`
-- Dockerfile: `Dockerfile.web`
-- Docker command: `next start -p $PORT`
-- Env: `NEXT_PUBLIC_API_BASE=https://<your-api-service>`
-
-API (Node/Express):
-- Build context: `.`
-- Dockerfile: `Dockerfile.api`
-- Docker command: `node apps/api/dist/index.js`
-- Env: `API_PORT=$PORT`, `WEB_ORIGIN=https://<your-web-service>`, `DATABASE_URL=...`
-
-Worker (Node):
-- Build context: `.`
-- Dockerfile: `Dockerfile.worker`
-- Docker command: `node apps/worker/dist/index.js`
-- Env: `DATABASE_URL=...`
 
 ## OCR for scanned confirmations (local)
 
@@ -103,14 +100,13 @@ Example: `truckerio.local`
 2. Update `.env`:
    ```
    WEB_ORIGIN="http://truckerio.local:3000"
-   NEXT_PUBLIC_API_BASE="/api"
-   API_BASE_INTERNAL="http://localhost:4000"
+   NEXT_PUBLIC_API_URL="http://truckerio.local:4000"
    ```
 3. Restart `pnpm dev:web` and `pnpm dev:api`
 
 ## LAN access checklist
 
-- Browser requests go to `http://<host-ip>:3000/api/...` (never `localhost:4000`).
+- Browser requests go to `${NEXT_PUBLIC_API_URL}/...` (set this to your reachable API host, never an unreachable localhost from the browser).
 - Web container can reach API service: `wget -qO- http://api:4000/health` returns `{ ok: true }`.
 - Login response sets a `session` cookie scoped to `<host-ip>`.
 
@@ -186,3 +182,8 @@ Optional: wipe existing loads before import:
 ```bash
 pnpm --filter @truckerio/db exec tsx prisma/import-loads.ts --wipe
 ```
+
+
+## Production Deployment
+
+See [deployment.md](./deployment.md) for Render (API) and Vercel (web) deployment instructions and environment variables.

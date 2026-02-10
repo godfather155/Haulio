@@ -1,4 +1,4 @@
-import "./lib/env";
+import { env } from "./lib/env";
 import crypto from "crypto";
 import express from "express";
 import type { Response } from "express";
@@ -121,7 +121,7 @@ import path from "path";
 const app = express();
 app.set("etag", false);
 const csvUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
-const DEV_ERRORS = process.env.NODE_ENV !== "production";
+const DEV_ERRORS = env.includeErrorDetails;
 const DEFAULT_TEAM_NAME = "Default";
 
 function sendServerError(res: Response, message: string, error?: unknown) {
@@ -862,8 +862,8 @@ async function recordLearningExample(params: {
 }
 
 app.use(helmet());
-const explicitOrigins = [process.env.WEB_ORIGIN].filter(Boolean) as string[];
-const IS_PROD = process.env.NODE_ENV === "production";
+const explicitOrigins = env.corsAllowedOrigins;
+const IS_PROD = env.isProduction;
 
 const parseHostname = (value?: string) => {
   if (!value) return null;
@@ -887,7 +887,7 @@ const isAllowedOrigin = (origin: string | undefined, hostHeader: string | undefi
   if (IS_PROD) return false;
   const originHost = parseHostname(origin);
   if (!originHost) return false;
-  if (isLocalhostHost(originHost)) return true;
+  if (env.corsAllowLocalhost && isLocalhostHost(originHost)) return true;
   const requestHost = parseHostHeader(hostHeader);
   return Boolean(requestHost && originHost === requestHost);
 };
@@ -907,12 +907,28 @@ app.use((req, _res, next) => {
   next();
 });
 
+app.use((req, res, next) => {
+  if (!env.requestLoggingEnabled) {
+    next();
+    return;
+  }
+  if (!env.requestLoggingIncludeHealth && req.path === "/health") {
+    next();
+    return;
+  }
+  const startedAt = Date.now();
+  res.on("finish", () => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl} ${res.statusCode} ${Date.now() - startedAt}ms`);
+  });
+  next();
+});
+
 app.get("/", (_req, res) => {
   res.json({ ok: true, service: "haulio-api", health: "/health" });
 });
 
 app.get("/health", (_req, res) => {
-  res.json({ ok: true });
+  res.status(200).json({ ok: true, status: "healthy" });
 });
 
 const setupLimiter = rateLimit({
@@ -1331,7 +1347,7 @@ app.post("/auth/forgot", async (req, res) => {
       expiresAt,
     },
   });
-  const webOrigin = process.env.WEB_ORIGIN || "http://localhost:3000";
+  const webOrigin = env.webOrigin;
   const resetUrl = `${webOrigin}/reset/${token}`;
   let emailSent = false;
   if (isEmailConfigured()) {
@@ -10816,7 +10832,7 @@ app.post("/users/invite-bulk", requireAuth, requirePermission(Permission.ADMIN_S
   const users = await prisma.user.findMany({
     where: { id: { in: parsed.data.userIds }, orgId: req.user!.orgId },
   });
-  const inviteBase = process.env.WEB_ORIGIN || "http://localhost:3000";
+  const inviteBase = env.webOrigin;
   const invites = [];
   for (const user of users) {
     const token = crypto.randomBytes(32).toString("hex");
@@ -11278,8 +11294,18 @@ app.post("/admin/users", requireAuth, requireCsrf, requireRole("ADMIN"), async (
   res.json({ user });
 });
 
-const port = Number(process.env.API_PORT || 4000);
-const host = process.env.API_HOST || "0.0.0.0";
+app.use((error: unknown, _req: express.Request, res: Response, _next: express.NextFunction) => {
+  const detail = error instanceof Error ? error.message : String(error);
+  console.error("Unhandled API error", detail);
+  if (env.includeErrorDetails) {
+    res.status(500).json({ error: "Internal server error", detail });
+    return;
+  }
+  res.status(500).json({ error: "Internal server error" });
+});
+
+const port = env.port;
+const host = env.host;
 ensureUploadDirs().then(() => {
   app.listen(port, host, () => {
     console.log(`API listening on ${host}:${port}`);
